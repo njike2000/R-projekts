@@ -1,0 +1,352 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+#library
+
+```{r}
+library(ggplot2)  
+library(caret)
+library(randomForest)
+library(plyr)
+library(dplyr)
+library(pROC)
+```
+
+
+#Importing data
+```{r}
+data = host_train
+```
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+```{r}
+head(data)
+```
+
+
+Show structure information about the dataframe. 
+```{r}
+str(data)
+```
+Show summary statistics per column.
+```{r}
+summary(data)
+```
+
+
+#Data Cleaning
+```{r}
+colnames(data)[13] <- "Admission_Types"
+colnames(data)[18] <- "target"
+
+
+data_sub <- subset(data,Hospital_city == 10)
+
+            data_sub$target[data_sub$target %in% c("0-10","11-20" ,"21-30","31-40","41-50","51-60","61-70","71-80", "81-90", "91-100", "More than 100 Days")] <- c(5,15,25,35,45,55,65,75,85,95,105)
+            
+data_sub1 <- data_sub[, -c(2:5,7,9,12)]
+            
+#Creating subsets for easy access
+data_05 = subset(data,target == 5 )
+data_10 = subset(data,target == 15 )
+data_20 = subset(data,target == 25 )
+data_30 = subset(data,target == 35 )
+data_40 = subset(data,target == 45 )
+data_50 = subset(data,target == 55 )
+data_60 = subset(data,target == 65 )
+data_70 = subset(data,target == 75 )
+data_80 = subset(data,target == 85 )
+data_90 = subset(data,target == 95 )
+data_100 = subset(data,target == 105 )
+
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+#Part 1 - Estimator
+```{r}
+
+
+## estimate CHD risk based on all provided data 
+estimator_1 <- function (p_data_sub1) {
+  return (table(p_data_sub1$target)["0-10"] / length(p_data_sub1$target))
+}
+
+
+## estimate CHD risk based on all provided data for given sex 
+estimator_2 <- function (data_sub1, p_Age) {
+  
+  my_subset  <- data %>% subset (Age = p_Age ) 
+  
+  return (estimator_1(my_subset))
+}
+
+
+## subsample dataset 
+resample_data  <- function(p_data_sub1) {
+  idx <- sample( nrow(p_data_sub1), replace =T ) 
+  return (p_data_sub1[idx, ])
+}
+
+
+print_summary <- function (p_vec) {
+  print (paste("mean: ", round(mean(p_vec), digits=3) ," ,sd: ",  round( sd(p_vec), digits=3)  ))
+}
+
+
+e1 <- replicate(100, estimator_1 (resample_data(data_sub1) ) )
+print_summary (e1)
+
+e2<- replicate(100, estimator_2 (resample_data(data_sub1), "radiotherapy" ) )
+print_summary (e2)
+```
+
+
+#Train test Slipt
+```{r}
+set.seed(123)
+test_percentage = 0.5
+
+n_test = floor( nrow (data_sub1 ) *test_percentage )
+idx_test <- sample(1:nrow(data_sub1), n_test)
+data_sub_test <- data_sub1[ idx_test,]
+data_sub_train <- data_sub1[ -idx_test,]
+
+print (nrow(data_sub_test))
+print (nrow(data_sub_train))
+
+print (table(data_sub_test$target) )
+print (table(data_sub_train$target) )
+
+
+```
+#Part 2 KNN
+
+```{r}
+library(class)
+set.seed (0)
+control <- trainControl(method="cv", number=5)
+metric <- "Kappa"
+
+data_sub_train_complete = data_sub_train[complete.cases(data_sub_train),]
+data_sub_test_complete = data_sub_test[complete.cases(data_sub_test),]
+
+model <- train(target~., data=data_sub_train_complete, method="knn", metric=metric, trControl=control)
+#,  tuneGrid = expand.grid(k = seq(1, 101, by = 2)
+print (model)
+
+
+
+prediction  <- predict(model, data_sub_test_complete)
+
+
+
+table (data_sub_test_complete$target, prediction)
+
+sensitivity(prediction, data_sub_test_complete$target ,negative="healthy")
+specificity(prediction, data_sub_test_complete$target ,negative="healthy")
+
+#compute accuracy 
+table(prediction == data_test_complete$target)["TRUE"] / nrow (data_test_complete)
+
+
+```
+## Radndom Forrest 
+
+
+```{r}
+library(class)
+
+control <- trainControl(method="oob", number=5)
+metric <- "Kappa"
+
+#Data Partittion
+data_sub_train_complete = data_sub_train[complete.cases(data_sub_train),]
+data_sub_test_complete = data_sub_test[complete.cases(data_sub_test),]
+
+model <- train(target~., data=data_sub_train_complete, method="rf", metric=metric, trControl=control)
+print (model)
+
+
+
+prediction  <- predict(model, data_sub_test_complete)
+
+table (data_sub_test_complete$target, prediction)
+
+```
+
+## Using a different cutoff
+
+
+Almost all learning methods can output class probabilities rather than only class labels. Lets find out if these class probabilities might help to obtain a better predictor. 
+
+
+
+```{r}
+library(class)
+
+control <- trainControl(method="cv", number=5, classProbs = TRUE)
+metric <- "Kappa"
+
+data_sub_train_complete = data_sub_train[complete.cases(data_sub_train),]
+data_sub_test_complete = data_sub_test[complete.cases(data_sub_test),]
+
+model <- train(target~., data=data_sub_train_complete, method="rf", metric=metric, trControl=control)
+print (model)
+
+
+
+prediction  <- predict(model, data_sub_test_complete, type = "prob")
+
+prediction$true_label = data_sub_test_complete$target
+
+prediction %>%
+  ggplot (aes ( x= true_label, y= CHD )) +
+  geom_boxplot()
+
+## lets use 0.1 as cutoff and see how this performs
+new_cutoff = 0.1
+
+table (prediction$true_label, ifelse (prediction$CHD > new_cutoff,"pred CHD", "pred healthy"))
+
+sensitivity((prediction$true_label), factor(ifelse (prediction$CHD > new_cutoff,"CHD", "healthy")),negative="healthy")
+
+specificity((prediction$true_label), factor(ifelse (prediction$CHD > new_cutoff,"CHD", "healthy")),negative="healthy")
+
+# compute accuracy 
+table (prediction$true_label ==  ifelse (prediction$CHD > new_cutoff,"CHD", "healthy"))["TRUE"] / nrow (prediction)
+
+```
+
+
+
+##Regression Using RadomForest
+
+```{r}
+library(gcookbook) # For the data set
+ggplot(data_sub1, aes(x=heightIn, y=target, colour = sex)) +
+geom_point() #+ geom_density2d()
+
+head(data_sub1)
+
+
+## generate train/ test split
+set.seed(0)
+test_percentage = 0.3
+n_test = floor( nrow (data_sub1 ) *test_percentage )
+idx_test <- sample(1:nrow(data_sub1), n_test)
+data_sub_test <- data_sub1[ idx_test,]
+data_sub_train <- data_sub1[ -idx_test,]
+
+
+control <- trainControl(method="cv", number=5)
+metric <- "Kappa"
+
+## 
+model <- train(target~., data=data_sub_train, method="rf", metric=metric, trControl=control)
+print (model)
+
+prediction <- predict(model, data_sub_test)
+
+data.frame (true_label =data_sub_test$target ,  predicted =  prediction) %>%
+  ggplot(aes( x = true_label, y = predicted)) +
+  geom_point()
+
+
+rmse = sqrt(mean((data_sub_test$target - prediction)^2 ))
+
+print (rmse)
+```
+
+
+## Regression using linar regression
+
+```{r}
+library(gcookbook) # For the data set
+
+ggplot(data_sub1, aes(x= Age, y=target)) +
+geom_point() + geom_density2d()
+
+head(data_sub)
+
+mydata_sub <- data_sub1
+#data_sub = data_sub[ , setdiff( colnames(data_sub), "ageMonth")]
+
+
+## generate train/ test split
+set.seed(0)
+test_percentage = 0.3
+n_test = floor( nrow (mydata_sub ) *test_percentage )
+idx_test <- sample(1:nrow(mydata_sub), n_test)
+data_sub_test <- mydata_sub[ idx_test,]
+data_sub_train <- mydata_sub[ -idx_test,]
+
+
+control <- trainControl(method="cv", number=5)
+metric <- "RMSE"
+
+## 
+model <- train(target~., data=data_sub_train, method="lm", metric=metric, trControl=control)
+print (model)
+
+prediction <- predict(model, data_sub_test)
+
+data.frame (true_label =data_sub_test$target ,  predicted =  prediction) %>%
+  ggplot(aes( x = true_label, y = predicted)) +
+  geom_point() 
+
+
+rmse = sqrt(mean((data_sub_test$target - prediction)^2 ))
+
+print (rmse)
+
+## prediction is even better using linear regression 
+## likely the linear model is better at extracting the linar structure in the data
+
+## show coefficiants
+print (model$finalModel$coefficients)
+
+
+
+
+
+```
+# Part 4 - Logistic Regression
+
+
+```{r}
+
+control <- trainControl(method="cv", number=5, classProbs = TRUE)
+metric <- "Kappa"
+
+data_sub_train_complete = data_sub_train[complete.cases(data_sub_train),]
+data_sub_test_complete = data_sub_test[complete.cases(data_sub_test),]
+
+model <- train(target~Age+Ward_Type+Admission_Types+Illness_Severity, data=data_sub_train_complete, method="glm", family = 'binomial', metric=metric, trControl=control)
+print (model)
+
+
+
+
+prediction  <- predict(model, data_sub_test_complete)
+
+table (data_sub_test_complete$target,prediction )
+
+print (model$finalModel)
+
+
+
+
+```

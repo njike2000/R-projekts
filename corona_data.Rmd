@@ -1,0 +1,488 @@
+---
+title: "Data Exploration - Cardiovascular Study Dataset"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r,  warning=FALSE,include= TRUE,echo=TRUE,results='hide', message=FALSE}
+# Libraries need to be installed before they can be used (but only once)
+
+#install.packages("magrittr")
+#install.packages("plyr")
+#install.packages("dplyr")
+#install.packages("ggplot2")
+#install.packages("grid")
+#install.packages("gridExtra")
+#install.packages("stringr")
+
+
+#STRG+SHIFT+RETURN
+# load already installed libraries 
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(stringr)
+library(here)
+library(scales)
+library(readr)
+library(tidyverse)
+
+
+```   
+
+
+
+##Datensätzbeschreibung
+[Source](https://www.kaggle.com/datasets/arashnic/covid19-hospital-treatment?select=host_train.csv)
+
+The task is to accurately predict the Length of Stay for each patient on case by case basis so that the Hospitals can use this information for optimal resource allocation and better functioning. The length of stay is divided into 11 different classes ranging from 0-10 days to more than 100 days.
+
+- case_id
+- Hospital
+- Hospital_type
+- Hospital_city
+- Hospital_region
+- Available-Extra-Rooms-in-Hospital | Number of Extra rooms available in the Hospital
+- Department | Department overlooking the case | ['radiotherapy' 'anesthesia' 'gynecology' 'TB & Chest disease' 'surgery']
+- Ward_Type | ['R' 'S' 'Q' 'P' 'T' 'U']
+- Ward_Facility | ['F' 'E' 'D' 'B' 'A' 'C']
+- Bed_Grade | Condition of Bed in the Ward
+- patientid
+- CityCodePatient | City Code for the patient
+- Type of Admission | Admission Type registered by the Hospital | ['Emergency' 'Trauma' 'Urgent']
+- Illness_Severity | Severity of the illness recorded at the time of admission | ['Extreme' 'Moderate' 'Minor']
+- Patient_Visitors
+- Age | Age category | ['51-60' '71-80' '31-40' '41-50' '81-90' '61-70' '21-30' '11-20' '0-10' '91-100']
+- Admission_Deposit |Deposit at the Admission Time
+- Stay_Days | Stay Days by the patient (target) | ['0-10' '41-50' '31-40' '11-20' '51-60' '21-30' '71-80'
+'More than 100 Days' '81-90' '61-70' '91-100']
+
+```{r}
+
+data = host_train
+```
+
+
+##Deskriptive analyses
+
+```{r}
+head(data)
+```
+
+
+Show structure information about the dataframe. 
+```{r}
+str(data)
+```
+Show summary statistics per column.
+```{r}
+summary(data)
+```
+##cleaning and preparation of Data
+```{r}
+colnames(data)[13] <- "Admission_Types"
+colnames(data)[18] <- "target"
+
+
+     data$target[data$target %in% c("0-10","11-20" ,"21-30","31-40","41-50","51-60","61-70","71-80", "81-90", "91-100", "More than 100 Days")] <- c(5,15,25,35,45,55,65,75,85,95,105)
+     
+
+
+data_sub <- subset(data,Hospital == 4)
+
+#Creating subsets for easy access
+data_10 = subset(data,target == "5" )
+data_20 = subset(data,target == "15" )
+data_30 = subset(data,target == "25" )
+data_40 = subset(data,target == "35" )
+data_50 = subset(data,target == "45" )
+data_60 = subset(data,target == "55" )
+data_70 = subset(data,target == "65" )
+data_80 = subset(data,target == "75" )
+data_90 = subset(data,target == "85" )
+data_100 = subset(data,target == "95" )
+
+  
+```
+
+##Age Distribution
+```{r}
+## sorting out patient informations
+patients <- data %>%
+            group_by(patientid) %>%
+            select(patientid, Age) %>%
+            mutate(count_age = n()) %>%
+            ggplot( aes( x = Age, fill = Age)) + 
+            geom_bar()+
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Age" )  +
+              xlab ("Age") +
+              ylab  ("count")
+
+patients
+
+```
+**Interpretation**
+The majority of patients is between 30 and 60 years old. Very very younger (<35) or older (>65) patients
+
+##Age vs Target
+```{r}
+age_vs_target <- data.frame(table(data$Age, data$target))
+colnames(age_vs_target)[1] <- "age"
+colnames(age_vs_target)[2] <- "Target"
+
+
+ggplot(age_vs_target, aes(x = age, y = Freq, fill = Target)) +
+  geom_bar(stat = "identity") +
+  theme(text = element_text(size = 16)) +
+  labs(title = "Frequency Bar: Age vs Target") +
+  xlab("Age Distributiom") +
+  ylab("Count")
+
+
+  ggplot(age_vs_target, aes(x = age, y= Freq, color = Target)) + 
+    geom_point(alpha = 0.4)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Boxplot: Age vs. Target") +
+    xlab ("Target") +
+    ylab ("Age")
+  
+    ggplot(age_vs_target, aes(x = Target, y= age, color = Target)) + 
+      geom_boxplot(alpha = 0.4)+
+      theme(text = element_text(size=16)) +
+      labs ( title = "Boxplot: Age vs. Target") +
+      xlab ("Target") +
+      ylab ("Age")
+```
+
+
+##stay Days vs Type of Admission
+```{r}
+
+ad_time <- data %>% 
+           ggplot( aes( x = Admission_Types, fill = Admission_Types)) + 
+            geom_bar() + 
+              theme(text = element_text(size = 16)) +
+              labs(title = "Frequency Bar: Admission Type") +
+              xlab ("Admission Type") + 
+              ylab("Count")
+ad_time
+
+stay_n <- data %>%
+            
+            ggplot( aes( x = Admission_Types, fill = target )) + 
+            geom_bar()+
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Target vs Admission Types" )  +
+              xlab ("Days") +
+              ylab  ("count") 
+              
+
+stay_n
+```
+
+
+##Sorting the Frequency at which Patients visited the Hospital
+```{r}
+
+
+freq <- data %>% 
+  group_by(patientid) %>%
+  summarize(num_pat  = n()) %>%
+    ggplot(aes(x =patientid)) + 
+    geom_histogram() +
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: Hospital Visites" )  +
+          xlab ("Number of Patient") +
+          ylab  ("Visite Frequency")
+freq
+
+```
+
+
+##Number of Patient Per Hospital
+```{r}
+##sorting hospital informatiions
+patient_per_hospital <- data.frame(table(data$Hospital))
+                        
+xx <- patient_per_hospital[order(patient_per_hospital$Freq),]
+xx$Var1 = factor(xx$Var1, levels = rev(xx$Var1))
+
+            ggplot(xx, aes( x = Var1, y = Freq, fill = Var1)) + 
+            geom_bar(stat="identity")+
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Number of Patient per Hospital" )  +
+              xlab ("Hospital ID") +
+              ylab  ("Number of Patients")
+            
+            
+
+```
+**Interpretation**
+The Hospitals with ID 6, 19,23 and 26 received the hightes number of Patients
+
+
+##Number of Patients per Cities
+```{r}
+patient_per_Hospital_Cities <- data.frame(table(data$Hospital_city, data$Hospital ,data$target))
+colnames(patient_per_Hospital_Cities)[1] <- "Hospital_city"
+colnames(patient_per_Hospital_Cities)[2] <- "Hospital"
+colnames(patient_per_Hospital_Cities)[3] <- "target"
+
+            ggplot(patient_per_Hospital_Cities, aes( x = Hospital_city, y = Freq, fill = Hospital_city)) + 
+            geom_bar(stat = "identity")+
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Number of Patient per Hospital_City" )  +
+              xlab ("Hospital_City ID") +
+              ylab  ("Number of Patients")
+
+
+```           
+   
+   
+#Hospital Type
+```{r}
+
+hospital_vs_target <- data.frame(table(data$Hospital_type, data$target))
+
+data %>% 
+  ggplot(aes(x = Hospital_type, fill = target)) +
+    geom_bar() + 
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Hospital Type vs target" )  +
+              xlab ("Hospital Type") +
+              ylab  ("Count")
+
+ggplot(hospital_vs_target, aes(x = Var1, y = Freq, color = Var2)) +
+  geom_boxplot() +
+  facet_wrap(~Var2, scale = "free")
+
+```
+
+```{r}
+```
+
+            
+##Number of Hospitals per Cities und Regions            
+```{r}
+
+patient_per_Hospital_Cities_and_region <- data.frame(table(data$Hospital_city,data$Hospital_region, data$Hospital ,data$target))
+colnames(patient_per_Hospital_Cities_and_region)[1] <- "Hospital_city"
+colnames(patient_per_Hospital_Cities_and_region)[2] <- "Hospital_region"
+
+          ggplot(patient_per_Hospital_Cities_and_region ,aes (x = Hospital_city, y = Freq , fill = Hospital_region)) +
+            geom_bar(stat = "identity") + 
+            theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Number of Hospitals per Cities und Regions " )  +
+              xlab ("City ID") +
+              ylab  ("Number of Hospitals") 
+        
+```
+ 
+ 
+ 
+##Bed distribution per Hospital
+```{r}
+
+bed_distr_hosp <- data %>% 
+                  ggplot(aes (x = Hospital, fill = Available_Extra_Rooms_in_Hospital)) +
+                  geom_histogram(bins = 35) +
+                    theme(text = element_text(size=16)) +
+                     labs ( title = "Frequency Histogram: Number Beds available per Hospitals " )  +
+                      xlab ("Hospital") +
+                      ylab  ("Number of Beds") 
+
+bed_distr_hosp
+
+```
+**Interpretation**
+The Hospital with Id 26 the most Available Beds
+        
+##Bed distribution per Department     
+```{r}
+
+depart <- data %>% 
+          ggplot(aes (x = Hospital, fill = Available_Extra_Rooms_in_Hospital)) +
+          geom_histogram() +
+            facet_wrap(~Department) +
+            theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Number Beds available per Hospitals vs Departements  " )  +
+              xlab ("HOspital") +
+              ylab  ("Number of Beds") 
+
+depart
+
+```
+**Interpretation**
+From the Graph we can understand that the Departement of Gynecology has the most available Beds
+
+##Illness Severity Distribution
+```{r}
+admission <- data %>%
+              ggplot(aes (x = Illness_Severity, fill= Illness_Severity)) +
+                geom_bar() + 
+                  theme(text = element_text(size=16)) +
+                   labs ( title = "Frequency Histogram: Illness Severity Distribution  " )  +
+                    xlab ("Illness Severity") +
+                    ylab  ("Count") 
+admission
+```
+
+            
+##illness vs target            
+```{r}
+illness_vs_target <- data %>% 
+                        ggplot(aes (x = Illness_Severity, fill = target)) +
+                          geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Illness Severity Distribution vs target  " )  +
+                              xlab ("Illness Severity") +
+                              ylab  ("Count") 
+
+illness_vs_target
+
+                        data %>%
+                          ggplot(aes (x = target, fill = Illness_Severity)) +
+                          geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Illness Severity Distribution vs target  " )  +
+                              xlab ("Illness Severity") +
+                              ylab  ("Count") 
+                        
+                        
+                       
+
+```
+
+##Admission Deposit
+
+```{r}
+                        data %>% 
+                          ggplot(aes(x = Admission_Deposit, fill = target)) +
+                          geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Illness Admission Deposit vs target  " )  +
+                              xlab ("Admission Deposit") +
+                              ylab  ("Count") 
+```
+
+            
+#Admission Type
+
+```{r}
+                        data %>% 
+                          ggplot(aes(x = Admission_Types, fill = target)) +
+                          geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Illness Admission type vs target  " )  +
+                              xlab ("Illness Severity") +
+                              ylab  ("Count") 
+
+                        data %>% 
+                          ggplot(aes(x = Age, fill = Age)) +
+                          geom_histogram(stat = "count") + 
+                            theme(text = element_text(size = 16)) +
+                             labs ( title = "Frequency Histogram: Illness Admission type vs target  " )  +
+                              xlab ("Illness Severity") +
+                              ylab  ("Count") +
+                              facet_wrap(~Admission_Types)
+                          
+```
+*Interpretation*
+The Admissiion distribution goes thus: The Patient were been admitted into the Hospital as Emergency, Trauma and Urgent cases. With the must Patients aged between 31-50 years
+
+
+#Bed Grades
+
+```{r}
+                        data %>% 
+                          ggplot(aes(x = Bed_Grade, fill = Bed_Grade)) +
+                          geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Bed Grad vs target  " )  +
+                              xlab ("Bed Grade") +
+                              ylab  ("Count") 
+```
+
+
+#wardtype
+
+```{r}
+ward <- data.frame(table(data$Ward_Type, data$target))
+
+                           data %>%
+                            ggplot(aes(x = Ward_Type,  fill = Ward_Type)) +
+                            geom_bar() + 
+                            theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Ward type vs target  " )  +
+                              xlab ("Ward Tpye") +
+                              ylab  ("Count") 
+```
+
+#department
+
+```{r}
+
+patient_per_deparment <- data.frame(table(data$Department))
+                        
+xx <- patient_per_deparment[order(patient_per_deparment$Freq),]
+xx$Var1 = factor(xx$Var1, levels = rev(xx$Var1))
+
+
+ ggplot(xx, aes( x = Var1, y = Freq, fill = Var1)) + 
+            geom_bar(stat="identity")+
+             theme(text = element_text(size=16)) +
+             labs ( title = "Frequency Histogram: Number of Patient per Department" )  +
+              xlab ("Departmetn") +
+              ylab  ("Number of Patients")
+            
+
+```
+
+
+
+#Available Rooms in Hospital
+```{r}
+
+xy <- data[order(data$Available_Extra_Rooms_in_Hospital),] 
+xy$Hospital = factor(xy$Hospital, levels = rev(xy$Hospital))
+
+                xy %>%
+                     ggplot(aes(x= Hospital,y = Available_Extra_Rooms_in_Hospital,  fill = Hospital )) +
+                      geom_bar(stat = "identity") + 
+                      theme(text = element_text(size=16)) +
+                             labs ( title = "Frequency Histogram: Available_Extra_Rooms_in_Hospital  " )  +
+                              xlab ("Hospital") +
+                              ylab  ("Available_Extra_Rooms") 
+```
+
+            
+            
+            
+            
+            
+            
+            
+            
+  

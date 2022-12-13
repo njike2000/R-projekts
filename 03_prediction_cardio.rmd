@@ -1,0 +1,423 @@
+---
+title: "Bias Variance Tradeoff"
+output: html_notebook
+---
+
+# Load Libraries 
+
+```{r}
+library(ggplot2)  
+library(caret)
+library(randomForest)
+library(plyr)
+library(dplyr)
+library(pROC)
+
+
+```
+
+
+
+# Load and tidy cardio dataset 
+
+```{r}
+
+# read and parse data 
+cardio_raw= read.csv("https://drive.google.com/uc?export=download&id=1Om7-q6rrJDLS8iaGgGu-vjMVaBEcgJjS",sep = ",")
+
+## id column is useless for analysis 
+cardio <- cardio_raw[ , -1 ]
+
+## education is a categorical variable with values 1 to 4 (not a numeric value)
+cardio$education <- factor(cardio$education)
+
+## lets spell out the gender flag 
+cardio$sex <- ifelse (cardio$sex == "F", "female", "male")
+
+## lets spell out the smoking flag 
+cardio$is_smoking <- ifelse (cardio$is_smoking == "YES", "smoking", "not smoking")
+## rename column is_smoking
+colnames(cardio)[4] <- "smoking" 
+
+## rename column BPMeds
+colnames(cardio)[6] <- "BloodPresMed" 
+
+## lets spell out the BloodPresMed flag 
+cardio$BloodPresMed <- ifelse (cardio$BloodPresMed == 0, "no BloodPresMed", "BloodPresMed")
+
+## lets spell out the stroke flag 
+cardio$prevalentStroke <- ifelse (cardio$prevalentStroke == 0, "no stroke", "stroke")
+colnames(cardio)[7] <- "stroke" 
+
+
+## rename prevalentHyp      
+colnames(cardio)[8] <- "hypertensive" 
+cardio$hypertensive <- ifelse (cardio$hypertensive == 0, "no hypertensive", "hypertensive")
+
+## spell out the diabetes flag 
+cardio$diabetes <- ifelse (cardio$diabetes == 0, "no diabetes", "diabetes")
+
+
+## this is the target variable - spell out the outcome 
+cardio$TenYearCHD <- factor(ifelse (cardio$TenYearCHD == 0, "healthy", "CHD"), levels = c("healthy","CHD"))
+## rename target variable 
+colnames(cardio)[ncol(cardio)] <- "target" 
+
+
+
+## create subsets for easy access 
+cardio_chd = subset(cardio,target == "CHD" )
+cardio_healthy = subset(cardio,target == "healthy" )
+
+
+```
+
+
+
+# Part 1 - Estimators 
+
+
+```{r}
+
+
+## estimate CHD risk based on all provided data 
+estimator_1 <- function (p_cardio) {
+  return (table(p_cardio$target)["CHD"] / length(p_cardio$target))
+}
+
+
+## estimate CHD risk based on all provided data for given sex 
+estimator_2 <- function (cardio, p_sex) {
+  
+  my_subset  <- cardio %>% subset (sex= p_sex ) 
+  
+  return (estimator_1(my_subset))
+}
+
+
+## subsample dataset 
+resample_data  <- function(p_cardio) {
+  idx <- sample( nrow(p_cardio), replace =T ) 
+  return (p_cardio[idx, ])
+}
+
+
+print_summary <- function (p_vec) {
+  print (paste("mean: ", round(mean(p_vec), digits=3) ," ,sd: ",  round( sd(p_vec), digits=3)  ))
+}
+
+
+e1 <- replicate(100, estimator_1 (resample_data(cardio) ) )
+print_summary (e1)
+
+e2<- replicate(100, estimator_2 (resample_data(cardio), "male" ) )
+print_summary (e2)
+
+```
+
+## Exercise
+
+* Build estimators with lower bias and higher variance by adding more variables and reducing the size of the used dataset. 
+
+
+```{r}
+
+```
+
+
+# Train test split 
+
+```{r}
+set.seed(0)
+test_percentage = 0.5
+
+n_test = floor( nrow (cardio ) *test_percentage )
+idx_test <- sample(1:nrow(cardio), n_test)
+cardio_test <- cardio[ idx_test,]
+cardio_train <- cardio[ -idx_test,]
+
+print (nrow(cardio_test))
+print (nrow(cardio_train))
+
+print (table(cardio_test$target) )
+print (table(cardio_train$target) )
+
+```
+
+
+## Part 2 - KNN 
+
+
+```{r}
+library(class)
+set.seed (0)
+control <- trainControl(method="cv", number=5)
+metric <- "Kappa"
+
+cardio_train_complete = cardio_train[complete.cases(cardio_train),]
+cardio_test_complete = cardio_test[complete.cases(cardio_test),]
+
+model <- train(target~., data=cardio_train_complete, method="knn", metric=metric, trControl=control)
+#,  tuneGrid = expand.grid(k = seq(1, 101, by = 2)
+print (model)
+
+
+
+prediction  <- predict(model, cardio_test_complete)
+
+
+
+table (cardio_test_complete$target, prediction)
+
+sensitivity(prediction, cardio_test_complete$target ,negative="healthy")
+specificity(prediction, cardio_test_complete$target ,negative="healthy")
+
+#compute accuracy 
+table(prediction == cardio_test_complete$target)["TRUE"] / nrow (cardio_test_complete)
+
+
+```
+
+KNN performs rather poorly. The accuracy is rather high with about 83% but the predictions are biased towards predicting healthy for all patients. Thus, the predictor is not able to identify CHD patients with an sensitivity (TP/P) of only 19 / (19+195). Specificity (TN/N) is high at about  1225 / (1225+33) but at the expense of low sensitivity. 
+
+## Radndom Forrest 
+
+
+```{r}
+library(class)
+
+control <- trainControl(method="cv", number=5)
+metric <- "Kappa"
+
+cardio_train_complete = cardio_train[complete.cases(cardio_train),]
+cardio_test_complete = cardio_test[complete.cases(cardio_test),]
+
+model <- train(target~., data=cardio_train_complete, method="rf", metric=metric, trControl=control)
+print (model)
+
+
+
+prediction  <- predict(model, cardio_test_complete)
+
+table (cardio_test_complete$target, prediction)
+
+```
+
+RandomForest (RF) performs similarly poor compared to KNN. Usually RF will perform at least good if any structure in the data is present. 
+
+
+## Using a different cutoff
+
+
+Almost all learning methods can output class probabilities rather than only class labels. Lets find out if these class probabilities might help to obtain a better predictor. 
+
+
+
+```{r}
+library(class)
+
+control <- trainControl(method="cv", number=5, classProbs = TRUE)
+metric <- "Kappa"
+
+cardio_train_complete = cardio_train[complete.cases(cardio_train),]
+cardio_test_complete = cardio_test[complete.cases(cardio_test),]
+
+model <- train(target~., data=cardio_train_complete, method="rf", metric=metric, trControl=control)
+print (model)
+
+
+
+prediction  <- predict(model, cardio_test_complete, type = "prob")
+
+prediction$true_label = cardio_test_complete$target
+
+prediction %>%
+  ggplot (aes ( x= true_label, y= CHD )) +
+  geom_boxplot()
+
+## lets use 0.1 as cutoff and see how this performs
+new_cutoff = 0.1
+
+table (prediction$true_label, ifelse (prediction$CHD > new_cutoff,"pred CHD", "pred healthy"))
+
+sensitivity((prediction$true_label), factor(ifelse (prediction$CHD > new_cutoff,"CHD", "healthy")),negative="healthy")
+
+specificity((prediction$true_label), factor(ifelse (prediction$CHD > new_cutoff,"CHD", "healthy")),negative="healthy")
+
+# compute accuracy 
+table (prediction$true_label ==  ifelse (prediction$CHD > new_cutoff,"CHD", "healthy"))["TRUE"] / nrow (prediction)
+
+```
+
+## Compute AUC 
+
+Classifiers can usually be tuned to be more aggressive or conservative when generating positive predictions.
+Aggressive classifiers have more True Positives (high sensitivity) but also more False Positives (low specificity).
+Receiver Operating Characteristics (ROC) Curves illustrates the performance of a binary classifier system by plotting the sensitivity against the false positive rate (1 - specificity) for different levels of aggressiveness.
+The Area under the ROC Curve (AUC) can be used to compare the overall performance of different classifiers.
+
+```{r}
+
+
+control <- trainControl(method="cv", number=5, classProbs = TRUE)
+metric <- "Kappa"
+
+cardio_train_complete = cardio_train[complete.cases(cardio_train),]
+cardio_test_complete = cardio_test[complete.cases(cardio_test),]
+
+model <- train(target~., data=cardio_train_complete, method="rf", metric=metric, trControl=control)
+print (model)
+
+
+prediction  <- predict(model, cardio_test_complete, type = "prob")
+
+prediction$true_label = cardio_test_complete$target
+
+
+roc_object <- roc( prediction$true_label, prediction$CHD)
+ 
+# calculate area under curve
+auc( roc_object )
+
+plot(roc_object,print.auc = TRUE,
+     auc.polygon = TRUE,
+     grid=c(0.1, 0.2),
+     grid.col = c("green", "red"),
+     max.auc.polygon = TRUE,
+     auc.polygon.col = "skyblue",
+     print.thres = TRUE,
+     print.auc.x = 0.3,
+     print.auc.y = 0.2)
+
+```
+
+# Part 3 - Regression - Using randomForest
+
+```{r}
+
+library(gcookbook) # For the data set
+ggplot(heightweight, aes(x=heightIn, y=weightLb, colour = sex)) +
+geom_point() #+ geom_density2d()
+
+head(heightweight)
+
+
+## generate train/ test split
+set.seed(0)
+test_percentage = 0.3
+n_test = floor( nrow (heightweight ) *test_percentage )
+idx_test <- sample(1:nrow(heightweight), n_test)
+heightweight_test <- heightweight[ idx_test,]
+heightweight_train <- heightweight[ -idx_test,]
+
+
+control <- trainControl(method="cv", number=5)
+metric <- "RMSE"
+
+## 
+model <- train(weightLb~., data=heightweight_train, method="rf", metric=metric, trControl=control)
+print (model)
+
+prediction <- predict(model, heightweight_test)
+
+data.frame (true_label =heightweight_test$weightLb ,  predicted =  prediction) %>%
+  ggplot(aes( x = true_label, y = predicted)) +
+  geom_point()
+
+
+rmse = sqrt(mean((heightweight_test$weightLb - prediction)^2 ))
+
+print (rmse)
+
+
+
+```
+
+
+## Regression using linar regression
+
+```{r}
+library(gcookbook) # For the data set
+
+ggplot(heightweight, aes(x=heightIn, y=weightLb, colour = sex)) +
+geom_point() #+ geom_density2d()
+
+head(heightweight)
+
+myHeightweight <- heightweight
+#heightweight = heightweight[ , setdiff( colnames(heightweight), "ageMonth")]
+
+
+## generate train/ test split
+set.seed(0)
+test_percentage = 0.3
+n_test = floor( nrow (myHeightweight ) *test_percentage )
+idx_test <- sample(1:nrow(myHeightweight), n_test)
+heightweight_test <- myHeightweight[ idx_test,]
+heightweight_train <- myHeightweight[ -idx_test,]
+
+
+control <- trainControl(method="cv", number=5)
+metric <- "RMSE"
+
+## 
+model <- train(weightLb~., data=heightweight_train, method="lm", metric=metric, trControl=control)
+print (model)
+
+prediction <- predict(model, heightweight_test)
+
+data.frame (true_label =heightweight_test$weightLb ,  predicted =  prediction) %>%
+  ggplot(aes( x = true_label, y = predicted)) +
+  geom_point() 
+
+
+rmse = sqrt(mean((heightweight_test$weightLb - prediction)^2 ))
+
+print (rmse)
+
+## prediction is even better using linear regression 
+## likely the linear model is better at extracting the linar structure in the data
+
+## show coefficiants
+print (model$finalModel$coefficients)
+
+
+
+
+
+```
+
+
+# Part 4 - Logistic Regression
+
+
+```{r}
+
+control <- trainControl(method="cv", number=5, classProbs = TRUE)
+metric <- "Kappa"
+
+cardio_train_complete = cardio_train[complete.cases(cardio_train),]
+cardio_test_complete = cardio_test[complete.cases(cardio_test),]
+
+model <- train(target~sex+smoking+stroke+sysBP, data=cardio_train_complete, method="glm", family = 'binomial', metric=metric, trControl=control)
+print (model)
+
+
+
+
+prediction  <- predict(model, cardio_test_complete)
+
+table (cardio_test_complete$target,prediction )
+
+print (model$finalModel)
+
+
+
+
+```
+The coefficient for e.g smoking is 0.12. Thus being a smoker increased the odds of developing CHD by exp(0.12) = 1.12.
+The coefficient for e.g stroke is 1.6. Thus having had a stroke increased the odds of developing CHD by exp(1.6) = 4.9.
+
+
+
+

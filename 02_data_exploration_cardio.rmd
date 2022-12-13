@@ -1,0 +1,1094 @@
+---
+title: "Data Exploration - Cardiovascular Study Dataset"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+
+
+
+
+
+# How to use (TBR)
+* Add a new code block chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*. 
+
+* *Ctrl + Return*: Run single line of code
+* Mark multiple lines + *Ctrl + Return*: Run marked code block
+* *Ctrl + Shift + Return*: Run whole Chunk 
+
+* When you save the notebook, an HTML file containing the code and output will be saved alongside it (press *Ctrl+Shift+K* to preview the HTML file).
+
+* The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+
+# Links (Getting Started)
+* [Markdown Tuorial](https://rmarkdown.rstudio.com/authoring_basics.html)
+* [Markdown Cheatsheet](https://www.rstudio.com/wp-content/uploads/2016/03/rmarkdown-cheatsheet-2.0.pdf)
+* [R for Data Science](https://r4ds.had.co.nz/model-basics.html)
+* [R Introduction](https://cran.r-project.org/doc/manuals/R-intro.pdf)
+
+
+
+
+
+# Load Libraries
+
+```{r,  warning=FALSE,include= TRUE,echo=TRUE,results='hide', message=FALSE}
+# Libraries need to be installed before they can be used (but only once)
+
+#install.packages("magrittr")
+#install.packages("plyr")
+#install.packages("dplyr")
+#install.packages("ggplot2")
+#install.packages("grid")
+#install.packages("gridExtra")
+#install.packages("stringr")
+
+
+#STRG+SHIFT+RETURN
+# load already installed libraries 
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(stringr)
+library(here)
+library(scales)
+
+
+```   
+
+
+
+
+## Datensatzbeschreibung
+
+
+[Source](https://www.kaggle.com/christofel04/cardiovascular-study-dataset-predict-heart-disea)
+
+The dataset is publically available on the Kaggle website, and it is from an ongoing cardiovascular study on residents of the town of Framingham, Massachusetts. The classification goal is to predict whether the patient has 10-year risk of future coronary heart disease (CHD).The dataset provides the patients’ information. It includes over 4,000 records and 15 attributes.
+Variables
+Each attribute is a potential risk factor. There are both demographic, behavioral and medical risk factors.
+
+Demographic:
+• Sex: male or female("M" or "F")
+• Age: Age of the patient;(Continuous - Although the recorded ages have been truncated to whole numbers, the concept of age is continuous)
+Behavioral
+• is_smoking: whether or not the patient is a current smoker ("YES" or "NO")
+• Cigs Per Day: the number of cigarettes that the person smoked on average in one day.(can be considered continuous as one can have any number of cigarettes, even half a cigarette.)
+Medical( history)
+• BP Meds: whether or not the patient was on blood pressure medication (Nominal)
+• Prevalent Stroke: whether or not the patient had previously had a stroke (Nominal)
+• Prevalent Hyp: whether or not the patient was hypertensive (Nominal)
+• Diabetes: whether or not the patient had diabetes (Nominal)
+Medical(current)
+• Tot Chol: total cholesterol level (Continuous)
+• Sys BP: systolic blood pressure (Continuous)
+• Dia BP: diastolic blood pressure (Continuous)
+• BMI: Body Mass Index (Continuous)
+• Heart Rate: heart rate (Continuous - In medical research, variables such as heart rate though in fact discrete, yet are considered continuous because of large number of possible values.)
+• Glucose: glucose level (Continuous)
+Predict variable (desired target)
+• 10 year risk of coronary heart disease CHD(binary: “1”, means “Yes”, “0” means “No”)
+
+# Load Data 
+
+
+
+```{r}
+
+
+cardio_raw= read.csv("https://drive.google.com/uc?export=download&id=1Om7-q6rrJDLS8iaGgGu-vjMVaBEcgJjS",sep = ",")
+
+
+```
+
+
+
+# Descriptive Statistics
+
+R's str function gives me a look at the data types in the "cars" dataset, the head function prints the first 5 rows. The summary function lets me see basic summary statistics for each column.  
+
+Show first 5 rows. 
+```{r}
+head(cardio_raw)
+```
+
+Show structure information about the dataframe. 
+```{r}
+str(cardio_raw)
+```
+
+Show summary statistics per column.
+```{r}
+summary(cardio_raw)
+```
+
+
+# Cleaning and Prepping the Data
+
+Based on the results of the str(cars) function above, several issues with how the read.csv function imported the data were identified that need to be cleaned up before going in-depth with the analysis:
+
+```{r}
+
+## id column is useless for analysis 
+cardio <- cardio_raw[ , -1 ]
+
+## education is a categorical variable with values 1 to 4 (not a numeric value)
+cardio$education <- factor(cardio$education)
+
+## lets spell out the gender flag 
+cardio$sex <- ifelse (cardio$sex == "F", "female", "male")
+
+## lets spell out the smoking flag 
+cardio$is_smoking <- ifelse (cardio$is_smoking == "YES", "smoking", "not smoking")
+## rename column is_smoking
+colnames(cardio)[4] <- "smoking" 
+
+## rename column BPMeds
+colnames(cardio)[6] <- "BloodPresMed" 
+
+## lets spell out the BloodPresMed flag 
+cardio$BloodPresMed <- ifelse (cardio$BloodPresMed == 0, "no BloodPresMed", "BloodPresMed")
+
+## lets spell out the stroke flag 
+cardio$prevalentStroke <- ifelse (cardio$prevalentStroke == 0, "no stroke", "stroke")
+colnames(cardio)[7] <- "stroke" 
+
+
+## rename prevalentHyp      
+colnames(cardio)[8] <- "hypertensive" 
+cardio$hypertensive <- ifelse (cardio$hypertensive == 0, "no hypertensive", "hypertensive")
+
+## spell out the diabetes flag 
+cardio$diabetes <- ifelse (cardio$diabetes == 0, "no diabetes", "diabetes")
+
+
+## this is the target variable - spell out the outcome 
+cardio$TenYearCHD <- ifelse (cardio$TenYearCHD == 0, "healthy", "CHD")
+## rename target variable 
+colnames(cardio)[ncol(cardio)] <- "target" 
+
+
+
+## create subsets for easy access 
+cardio_chd = subset(cardio,target == "CHD" )
+cardio_healthy = subset(cardio,target == "healthy" )
+
+
+```
+
+# Univariate Plots
+In this section I will take a look at the distribution of values for each variable in the dataset by creating histograms using ggplot2's qplot function. We are trying to find out if there is more data to clean up, including outliers or extraneous values. This also might help me begin to identify any relationships between variables that are worth investigating further.
+
+
+## Age Distribution  
+
+```{r}
+# By Age
+cardio %>%
+  ggplot( aes(x = age)) + 
+    geom_histogram(binwidth =2)+
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: Age" )  +
+          xlab ("Age") +
+          ylab  ("count")
+
+```
+
+**Interpretation:**
+
+The majority of patients is between 40 and 60 years old. Very very younger (<35) or older (>65) patients. 
+
+
+## Age Distribution by Response 
+
+```{r}
+# By Age and Target using histograms 
+cardio %>%
+  ggplot( aes(x = age, fill = target)) + 
+    geom_histogram(binwidth =2)+
+    facet_wrap(~ target, ncol=1) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: Age vs Target" ) +
+          xlab ("Age") +
+          ylab ("count")
+
+##Question: What does the histogram tell us about the correlation of age with the response? Is it easy to read?  
+
+
+#Alternative:  By Age and Target using histograms 
+cardio %>%
+  ggplot( aes(x = target, y= age, fill = target)) + 
+    geom_boxplot()+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Boxplot: Age vs. Target") +
+    xlab ("Target") +
+    ylab ("Age")
+
+
+
+age_pvalue = t.test(cardio_chd$age, cardio_healthy$age)$p.value
+
+```
+
+**Interpretation:** 
+
+The age has a significant influece on the outcome. Older patients (about 50 to 60 years) are more in danger of developing CHD compared to younger patients (< 50 years). 
+
+But the predictive power of age is limited as both distributions overlap in the range of 45 to 55 years. 
+
+The age is statistical significant with a p-value of `r toString(age_pvalue)`.
+
+
+
+
+## Education distribution   
+
+```{r}
+# By education
+cardio %>%
+  ggplot( aes(x = education ,fill=education, y= ..prop.., group = 1)) +  ##  "y= ..prop.., group = 1 line" converts absolute counts to relative frequencies
+    geom_bar()+
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: Education " )  +
+          xlab ("Education") +
+          ylab  ("count")
+
+
+
+education_level1 =round(table(cardio$education)["1"]/nrow(cardio) *100,1)
+education_level2 =round(table(cardio$education)["2"]/nrow(cardio) *100,1)
+education_level4 =round(table(cardio$education)["4"]/nrow(cardio) *100,1)
+
+```
+
+**Interpretation:**
+
+
+About 70% patients have a rather low education level of (<=2). Only `r `toString(education_level4)`% patient has the highest education level 4.
+
+## Education Distribution by Response 
+
+```{r}
+# By Education  and Target
+cardio %>%
+  ggplot( aes(x = education, fill = target, y= ..prop.., group = target)) + 
+    geom_bar()+
+    facet_wrap(~ target, ncol = 1) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: Education vs Target" ) +
+          xlab ("Education") +
+          ylab ("Relative Frequency")
+
+
+education_p_value <- fisher.test(table (cardio$target, cardio$education))$p.value
+
+
+
+```
+
+There is a week statistical correlation (p-value `r toString(education_p_value)`) between education and CHD. 
+About 50% of CHD patients has education level 1, while only 40% of healty patients has education level 1. 
+
+
+** Show the percentage of education per outcome **
+
+```{r}
+
+## row sums of the confusion matrix. 
+tmp<- as.data.frame(table(cardio$target, cardio$education))
+
+
+tmp$Freq[ tmp$Var1=="CHD"] <- tmp$Freq[ tmp$Var1=="CHD"] / sum(subset(tmp, Var1=="CHD")["Freq"])
+tmp$Freq[ tmp$Var1=="healthy"] <- tmp$Freq[ tmp$Var1=="healthy"] / sum(subset(tmp, Var1=="healthy")["Freq"])
+
+
+
+tmp %>%
+  ggplot( aes(x = Var1,y=Freq, fill = Var1)) + 
+    geom_bar(stat="identity")+
+    facet_wrap(~ Var2) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Relative Frequency: Education vs Target" ) +
+          xlab ("Health Status") +
+          ylab ("relative Frequency")
+
+```
+
+** Show the percentage of outcome per education level **
+
+```{r}
+## column sums 
+tmp<- as.data.frame(table(cardio$target, cardio$education))
+
+sum(subset(tmp, Var2==1)["Freq"])
+sum(subset(tmp, Var2==2)["Freq"])
+sum(subset(tmp, Var2==3)["Freq"])
+sum(subset(tmp, Var2==4)["Freq"])
+
+tmp$Freq[ tmp$Var2==1] <- tmp$Freq[ tmp$Var2==1] / sum(subset(tmp, Var2==1)["Freq"])
+tmp$Freq[ tmp$Var2==2] <- tmp$Freq[ tmp$Var2==2] / sum(subset(tmp, Var2==2)["Freq"])
+tmp$Freq[ tmp$Var2==3] <- tmp$Freq[ tmp$Var2==3] / sum(subset(tmp, Var2==3)["Freq"])
+tmp$Freq[ tmp$Var2==4] <- tmp$Freq[ tmp$Var2==4] / sum(subset(tmp, Var2==4)["Freq"])
+
+
+tmp %>%
+  ggplot( aes(x = Var2,y=Freq, fill = Var1)) + 
+    geom_bar(stat="identity")+
+    facet_wrap(~ Var1) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Relative Frequency: Education vs Target" ) +
+          xlab ("Health Status") +
+          ylab ("relative Frequency")
+
+```
+
+**Interpretation:** 
+
+In the percentage of outcome per education level we see that the education level 1 patients have an increased risk of CHD. 
+The second highest risk of CHD is in the education level 4 grout, then level 3, then level 2. 
+Note that CHD risk does only differ slightly between levels 2,3 and 4. 
+
+
+## Gender Distribution   
+
+```{r}
+# By sex
+cardio %>%
+  ggplot( aes(x = sex, fill = sex)) + 
+    geom_bar()+
+  theme(text = element_text(size=16)) +
+    labs ( title = "Distribution of Sec" )  +
+          xlab ("Sex") +
+          ylab  ("count")
+
+t_femail_count =round(table(cardio$sex)["female"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:** 
+There are about `r toString(t_femail_count)` % female patients in the study. 
+
+
+## Gender Distribution by Response 
+
+```{r}
+# By sex and target
+cardio %>%
+  ggplot( aes(x = sex, fill = sex)) + 
+    geom_bar()+
+    facet_wrap(~target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Geschlecht" )  +
+          xlab ("Geschlecht") +
+          ylab  ("count")
+
+
+
+t_mail_chd_risk =round(table(cardio_chd$sex )["male"]/table(cardio$sex )["male"] *100,1)
+t_femail_chd_risk =round(table(cardio_chd$sex )["female"]/table(cardio$sex )["female"] *100,1)
+
+
+
+sex_pvalue = fisher.test(table(cardio$target, cardio$sex))$p.value
+
+```
+
+**Interpretation:** 
+
+Men are at higher risk of developing CHD. 
+The risk for men of developing CHD is `r toString(t_mail_chd_risk)` %, while the risk for 
+females is only `r toString(t_femail_chd_risk)` %.
+
+The effect of the gender is statistically signification (p-value of `r toString(sex_pvalue)`).
+
+
+
+
+
+##Cigs Per Day
+
+```{r}
+# By Cigs Per Day
+cardio %>%
+  ggplot( aes(x =cigsPerDay ,fill=smoking))  + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: cigsPerDay" )  +
+          xlab ("cigsPerDay") +
+          ylab  ("count")
+
+```
+
+**Interpretation:**
+
+" Cigs Per Day" shows the numer of cigarettes per day. 
+
+Values range from 1 to 60 cigarettes per day. The most common value is 20 cigarettes per day. 
+
+
+
+## Cigs Per Day Distribution by Response 
+```{r}
+
+cardio %>%
+  ggplot( aes(x = cigsPerDay, fill = target)) + 
+    geom_histogram(binwidth =   10)+
+    facet_wrap(~ target, ncol = 1) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: CigsPerDay vs Target" ) +
+          xlab ("cigsPerDay") +
+          ylab ("count")
+
+
+
+
+cigsPerDay_pvalue = t.test(cardio_chd$cigsPerDay, cardio_healthy$cigsPerDay)$p.value
+
+```
+
+
+The number of cigarettes per day has an effect on CHD. 
+
+Now we try to identify the number of cigarettes per day that has the highest impact. 
+
+```{r}
+
+
+cutoffs <- seq(1,40)
+cigsPerDay_pvalues = rep (NA, length(cutoffs))
+for (i in 1:length(cutoffs)) {
+   cigsPerDay_pvalues[i]= fisher.test(table(cardio$target, cardio$cigsPerDay >= cutoffs[i] ))$p.value
+}
+
+data.frame(cutoffs = cutoffs, pvalue = cigsPerDay_pvalues ) %>%
+  ggplot(aes (cutoffs,pvalue )) + 
+  geom_line()
+
+
+min_idx <- which.min (cigsPerDay_pvalues)
+
+print (paste("Bei einem Cutoff von <= " ,cutoffs[min_idx] , " ergibt sich der särkste statistische Effekt. Hier ergibt sich ein P-Value von " ,cigsPerDay_pvalues[min_idx] ))
+
+cardio[1:10, c("target","smoking","cigsPerDay")]
+
+
+
+```
+
+
+
+**Interpretation:**
+Die Personen, die weniger als 18 Zigaretten pro Tag rauchen, haben ein geringes Risiko, an CHD zu erkranken.
+
+
+
+
+
+#BloodPresMed
+
+```{r}
+# BloodPresMed
+cardio %>%
+  ggplot( aes(x = BloodPresMed,fill=BloodPresMed)) + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: BloodPresMed" )  +
+          xlab ("BloodPresMed") +
+          ylab  ("count")
+
+t_keinBPmed_count =round(table(cardio$BloodPresMed)["no"]/nrow(cardio) *100,1)
+
+
+```
+
+**Interpretation:**
+
+`r toString(t_keinBPmed_count)`der Teilnehmer nehmen keine Blutdruckmedikamente ein.
+
+
+
+```{r}
+
+subset(cardio, !is.na(BloodPresMed)) %>%
+  ggplot( aes(x = BloodPresMed,fill=BloodPresMed)) + 
+    geom_bar()+
+  facet_wrap(~target) + 
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: BloodPresMed" )  +
+          xlab ("BloodPresMed") +
+          ylab  ("count")
+
+
+
+t_keinBPmed_chd_count =round(table(cardio_chd$BloodPresMed )["BloodPresMed"]/nrow(cardio_chd) *100,1)
+
+
+t_keinBPmed_healthy_count =round(table(cardio_healthy$BloodPresMed )["BloodPresMed"]/nrow(cardio_healthy) *100,1)
+
+
+BloodPresMed_pvalue=fisher.test(table(cardio$target, cardio$BloodPresMed))$p.value
+
+```
+**Interpretation:**
+
+Der Anteil von der Teilnehmer, die  keine Blutdruckmedikamente einnehemn, ist bei den Gesunden  `r toString(t_keinBPmed_chd_count)`% und bei den Kranken `r toString(t_keinBPmed_healthy_count)`%
+
+Der Bluthochdruck hat einen statistisch signifikaten Effekt. Der P-value liegt bei `r toString(BloodPresMed_pvalue)`.
+
+
+
+#stroke
+```{r}
+# stroke
+cardio %>%
+  ggplot( aes(x = stroke,fill=stroke)) + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: stroke" )  +
+          xlab ("stroke") +
+          ylab  ("count")
+
+
+t_stroke_count =round(table(cardio$stroke)["prevalent stroke"]/nrow(cardio) *100,1)
+
+```
+
+**Interpretation:**
+
+" stroke" zeigt :  ob der Teilnehmer zuvor einen Schlaganfall hatte oder nicht .
+`r toString(t_stroke_count )` % der Teilnehmer hatten zuvor einen Schlaganfall gehabt.
+
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = stroke,fill=stroke)) + 
+    geom_bar()+
+  facet_wrap(~target) + 
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: stroke" )  +
+          xlab ("stroke") +
+          ylab  ("count")
+
+t_stroke_chd_count =round(table(cardio_chd$stroke )["stroke"]/nrow(cardio_chd) *100,1)
+
+
+t_stroke_healthy_count =round(table(cardio_healthy$stroke )["stroke"]/nrow(cardio_healthy) *100,1)
+
+stroke_pvalue =fisher.test(table(cardio$target, cardio$stroke))$p.value
+
+
+```
+**Interpretation:**
+
+Der Anteil von der Teilnehmer, die zuvor einen Schlaganfall hatten, ist bei den Gesunden  `r toString(t_stroke_healthy_count)`% und bei den Kranken `r toString(t_stroke_healthy_count)`% 
+
+Der Anteil von der Teilnehmer, die zuvor einen Schlaganfall hatten, ist bei den Gesunden und bei den Kranken ist fast gleich. 
+
+
+Ein vorheriger Schlaganfall hat einen statistisch signifikaten Effekt. Der P-value liegt bei `r toString(stroke_pvalue)`.
+
+
+#hypertensive
+
+```{r}
+# hypertensive
+cardio %>%
+  ggplot( aes(x = hypertensive,fill=hypertensive)) + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: hypertensive" )  +
+          xlab ("hypertensive") +
+          ylab  ("count")
+
+
+t_hypertensive_count =round(table(cardio$hypertensive)["prevalent hypertensive"]/nrow(cardio) *100,1)
+
+
+```
+**Interpretation:**
+ 
+" hypertensive" zeigt :  ob der Teilnehmer einen Bluthochdruck hatten oder nicht .
+`r toString(t_hypertensive_count )` % der Teilnehmer leiden an Bluthochdruck 
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = hypertensive,fill=hypertensive)) + 
+    geom_bar()+
+  facet_wrap(~target) + 
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: hypertensive" )  +
+          xlab ("hypertensive") +
+          ylab  ("count")
+
+t_hypertensive_chd_count =round(table(cardio_chd$hypertensive )["hypertensive"]/nrow(cardio_chd) *100,1)
+
+
+t_hypertensive_healthy_count =round(table(cardio_healthy$hypertensive )["hypertensive"]/nrow(cardio_healthy) *100,1)
+
+
+hypertensive_pvalue=fisher.test(table(cardio$target, cardio$hypertensive))$p.value
+```
+
+**Interpretation:**
+
+Der Anteil von der Teilnehmer, die an Bluthochdruck leiden, ist bei den Gesunden  `r toString(t_hypertensive_healthy_count)`% und bei den Kranken `r toString(t_hypertensive_chd_count)`% 
+
+Ein vorhandener Bluthochdruck ist statistisch stark signifikant. Der P-Value liegt bei 
+`r toString(hypertensive_pvalue)`. 
+
+
+
+##diabetes
+
+```{r}
+# diabetes
+cardio %>%
+  ggplot( aes(x = diabetes,fill=diabetes)) + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: diabetes" )  +
+          xlab ("diabetes") +
+          ylab  ("count")
+
+
+t_diabetes_count =round(table(cardio$diabetes)["diabetes"]/nrow(cardio) *100,1)
+
+
+```
+**Interpretation:**
+ 
+" diabetes" zeigt :  ob der Teilnehmer Diabetes hatten oder nicht .
+
+Nur`r toString(t_diabetes_count )` % der Teilnehmer leiden an Diabetes.
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = diabetes,fill=diabetes)) + 
+    geom_bar()+
+  facet_wrap(~target) + 
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: diabetes" )  +
+          xlab ("diabetes") +
+          ylab  ("count")
+
+t_diabetes_healthy_count =round(table(cardio_healthy$diabetes )["diabetes"]/nrow(cardio_healthy) *100,1)
+
+t_diabetes_chd_count =round(table(cardio_chd$diabetes )["diabetes"]/nrow(cardio_chd) *100,1)
+
+diabetes_pvalue = fisher.test(table(cardio$target, cardio$diabetes))$p.value
+
+```
+
+
+**Interpretation:**
+
+Der Anteil von der Teilnehmer, die an Diabetes leiden, ist bei den Gesunden  `r toString(t_diabetes_healthy_count)`% und bei den Kranken `r toString(t_diabetes_chd_count)`% 
+
+
+
+
+##totChol
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x =totChol ,fill=totChol))  + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: totChol" )  +
+          xlab ("totChol") +
+          ylab  ("count")
+
+t_totChol_count =round(table(cardio$totChol)["totChol"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+
+Der durchschnittliche Gesamtcholesterinspiegel liegt bei etwa 236 .
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = totChol, fill = target)) + 
+    geom_histogram(binwidth =2)+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: totChol vs Target" ) +
+          xlab ("totChol") +
+          ylab ("count")
+
+
+
+cardio %>%
+  ggplot( aes(x = totChol, fill = target)) + 
+    geom_density(alpha = 0.3)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: totChol vs Target" ) +
+          xlab ("totChol") +
+          ylab ("count")
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= totChol, fill = target)) + 
+    geom_boxplot(alpha = 0.3)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: totChol vs Target" ) +
+          xlab ("totChol") +
+          ylab ("count")
+
+totChol_pvalue = t.test (cardio_healthy$totChol, cardio_chd$totChol)$p.value
+
+```
+**Interpretation:**
+Die Mehrheit der Teilnehmer hat einen Gesamtcholesterinspiegel zwischen 200 und 250.
+
+
+Der Gesamtcholesterinspiegel hat einen statistisch signifikanten Effekt. Der P-value liegt bei 
+`r toString(totChol_pvalue)`. 
+
+
+
+##sysBP
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x =sysBP ,fill=sysBP))  + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: sysBP" )  +
+          xlab ("sysBP") +
+          ylab  ("count")
+
+t_sysBP_count =round(table(cardio$sysBP)["sysBP"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+Der systolische Blutdruck, die obere Zahl, misst die Kraft, die Ihr Herz bei jedem Schlag auf die Wände Ihrer Arterien ausübt.
+
+Der systolische Blutdruck liegt bei den meisten Teilnehmern im Bereich von 110-130 mmHg.
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = sysBP, fill = target)) + 
+    geom_histogram()+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: sysBP vs Target" ) +
+          xlab ("sysBP") +
+          ylab ("count")
+
+
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= sysBP, fill = target)) + 
+    geom_boxplot(alpha = 0.9)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: sysBP vs Target" ) +
+          xlab ("totChol") +
+          ylab ("count")
+
+sysBP_pvalue = t.test (cardio_healthy$sysBP, cardio_chd$sysBP)$p.value
+
+```
+**Interpretation:**
+
+Der systolische Blutdruck ist bei Kranken und Gesunden fast gleich hoch.
+ 
+
+Der systolische Blutdruck hat einen statistisch signifikaten Einfluss. Der P-Value liegt bei `toString(sysBP_pvalue)`.
+
+
+
+
+
+##diaBP
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x =diaBP ,fill=diaBP))  + 
+    geom_bar()+
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: diaBP" )  +
+          xlab ("diaBP") +
+          ylab  ("count")
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= diaBP, fill = target)) + 
+    geom_boxplot(alpha = 0.9)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: diaBP vs Target" ) +
+          xlab ("totChol") +
+          ylab ("count")
+
+
+t_diaBP_count =round(table(cardio$diaBP)["diaBP"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = diaBP, fill = target)) + 
+    geom_histogram(binwidth =2)+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: diaBP vs Target" ) +
+          xlab ("diaBP") +
+          ylab ("count")
+
+
+diaBP_pvalue = t.test (cardio_healthy$diaBP, cardio_chd$diaBP)$p.value
+
+```
+
+
+
+
+**Interpretation:**
+
+ 
+
+
+##BMI
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x =BMI ,fill=BMI))  + 
+    geom_histogram()+
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: BMI" )  +
+          xlab ("BMI") +
+          ylab  ("count")
+
+t_BMI_count =round(table(cardio$BMI)["BMI"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = BMI, fill = target)) + 
+    geom_histogram(binwidth =2)+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: BMI vs Target" ) +
+          xlab ("BMI") +
+          ylab ("count")
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= BMI, fill = target)) + 
+    geom_boxplot(alpha = 0.9)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: BMI vs Target" ) +
+          xlab ("BMI") +
+          ylab ("count")
+
+BMI_pvalue = t.test (cardio_healthy$BMI, cardio_chd$BMI)$p.value
+
+```
+**Interpretation:**
+
+
+
+
+##heartRate
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x =heartRate ,fill="green"))  + 
+    geom_histogram()+
+  
+  theme(text = element_text(size=16)) +
+    guides(fill=FALSE) + 
+    labs ( title = "Frequency Histogram:heartRate" )  +
+          xlab ("heartRate") +
+          ylab  ("count")
+
+t_heartRate_count =round(table(cardio$heartRate)["heartRate"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = heartRate, fill = target)) + 
+    geom_histogram()+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: heartRate vs Target" ) +
+          xlab ("heartRate") +
+          ylab ("count")
+
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= heartRate, fill = target)) + 
+    geom_boxplot(alpha = 0.9)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: heartRate vs Target" ) +
+          xlab ("heartRate") +
+          ylab ("count")
+
+heartRate_pvalue = t.test (cardio_healthy$heartRate, cardio_chd$heartRate)$p.value
+
+
+```
+**Interpretation:**
+
+
+
+##glucose
+
+
+```{r}
+# glucose
+cardio %>%
+  ggplot( aes(x =glucose ,color=glucose))  + 
+    geom_histogram(fill="blue")
+  
+  theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram:glucose" )  +
+          xlab ("glucose") +
+          ylab  ("count")
+
+t_glucose_count =round(table(cardio$glucose)["glucose"]/nrow(cardio) *100,1)
+
+
+
+```
+
+**Interpretation:**
+
+
+
+```{r}
+
+cardio %>%
+  ggplot( aes(x = glucose, fill = target)) + 
+    geom_histogram(binwidth =2)+
+    facet_wrap(~ target) + 
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: glucose vs Target" ) +
+          xlab ("glucose") +
+          ylab ("count")
+
+
+cardio %>%
+  ggplot( aes(x = target ,y= glucose, fill = target)) + 
+    geom_boxplot(alpha = 0.9)+
+    theme(text = element_text(size=16)) +
+    labs ( title = "Frequency Histogram: glucose vs Target" ) +
+          xlab ("glucose") +
+          ylab ("count")
+
+glucose_pvalue = t.test (cardio_chd$glucose, cardio_healthy$glucose)$p.value
+
+
+
+```
+**Interpretation:**
+
+### Zusammenfassung 
+
+Tabelle mit jedem Feature ist eine Zeile.
+
+Featurename, cardinal, ordinal oder nominal, Effekt, p-value, Anzahl an missing values
+
+```{r}
+
+feature_summary = data.frame(feature = colnames(cardio)[1:ncol(cardio)-1])
+feature_summary$art = c("nominal","ordinal","cardinal","cardinal","nominal","cardinal","cardinal","cardinal","cardinal","nominal","nominal","nominal","nominal","nominal","nominal")
+
+feature_summary$effekt =c("höheres Alter hat höheres Risiko"
+                          , "education_inter"
+                          , "Männer erkranken häufiger als Frauen  "
+                          ,"der Effekt in beiden fast gleich"
+                          , "weniger als 20 Zigaretten,geringes Risiko",
+                          "meisten nehmen keine BPMeds ein", 
+                          "die Wirkung ist nicht effektiv",
+                          "mit hypertensive ,höheres Risiko  ",
+                         "Diabetes-Patienten haben ein höheres Risiko", 
+                         "der Effekt in beiden fast gleich", 
+                         "mit sysBP,höheres Risiko", 
+                         "höherer diaBP,höheres Risiko",
+                         "höherer BMI hat höheres Risiko", 
+                         "der Effekt in beiden fast gleich",
+                         "Glucose-Patienten haben ein höheres Risiko ")
+
+feature_summary$p_value = c(toString(age_pvalue),toString(education_p_value), sex_pvalue,smoking_pvalue,cigsPerDay_pvalue,BloodPresMed_pvalue,stroke_pvalue,hypertensive_pvalue,diaBP_pvalue,totChol_pvalue,sysBP_pvalue,diaBP_pvalue,BMI_pvalue,heartRate_pvalue,glucose_pvalue)
+feature_summary$nbr_missing = ""
+
+
+for (ir in 1:nrow(feature_summary)) {
+    tmp_col <- cardio[,feature_summary$feature[ir] ]
+    feature_summary$nbr_missing[ir] <- nrow(cardio) -  table(is.na(tmp_col))["FALSE"]
+}
+
+knitr::kable(feature_summary)
+
+
+
+
+
+```
